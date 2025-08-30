@@ -1,0 +1,143 @@
+// Grafana Alloy configuration for log collection
+// Replacement for deprecated Promtail
+
+// Loki write endpoint configuration
+loki.write "default" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// Docker container log discovery and processing
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// Process Docker container logs
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.containers.targets
+  forward_to = [loki.process.docker_logs.receiver]
+  
+  labels = {
+    job = "docker",
+  }
+}
+
+// Process and parse Docker logs
+loki.process "docker_logs" {
+  stage.json {
+    expressions = {
+      output = "log",
+      stream = "stream",
+    }
+  }
+  
+  stage.labels {
+    values = {
+      stream = "",
+    }
+  }
+  
+  stage.output {
+    source = "output"
+  }
+  
+  forward_to = [loki.write.default.receiver]
+}
+
+// File-based log collection for system logs
+loki.source.file "system_logs" {
+  targets = [
+    {
+      __path__ = "/var/log/*.log",
+      job      = "system",
+    },
+  ]
+  forward_to = [loki.process.system_logs.receiver]
+}
+
+// Process system logs
+loki.process "system_logs" {
+  stage.regex {
+    expression = "^(?P<timestamp>\\w+ \\d+ \\d+:\\d+:\\d+) (?P<hostname>\\w+) (?P<service>\\w+): (?P<message>.*)"
+  }
+  
+  stage.labels {
+    values = {
+      hostname = "",
+      service  = "",
+    }
+  }
+  
+  stage.timestamp {
+    source = "timestamp"
+    format = "Jan 02 15:04:05"
+  }
+  
+  forward_to = [loki.write.default.receiver]
+}
+
+// Application-specific log processing for ML model
+loki.source.file "ml_model_logs" {
+  targets = [
+    {
+      __path__               = "/var/lib/docker/containers/*/ml-model*.log",
+      job                    = "ml-model",
+      service               = "ml-model-api",
+    },
+  ]
+  forward_to = [loki.process.ml_model_logs.receiver]
+}
+
+// Enhanced processing for ML model logs
+loki.process "ml_model_logs" {
+  // Parse ML model specific log patterns
+  stage.regex {
+    expression = "^(?P<level>INFO|ERROR|WARN|DEBUG):(?P<logger>[\\w\\.]+):(?P<message>.*)"
+  }
+  
+  stage.labels {
+    values = {
+      level  = "",
+      logger = "",
+    }
+  }
+  
+  // Extract API request information
+  stage.regex {
+    expression = "(?P<method>GET|POST|PUT|DELETE)\\s+(?P<endpoint>/\\w+).*(?P<status_code>\\d{3})"
+  }
+  
+  stage.labels {
+    values = {
+      method      = "",
+      endpoint    = "",
+      status_code = "",
+    }
+  }
+  
+  forward_to = [loki.write.default.receiver]
+}
+
+// Metrics collection for monitoring Alloy itself
+prometheus.exporter.self "alloy" { }
+
+prometheus.scrape "alloy" {
+  targets    = prometheus.exporter.self.alloy.targets
+  forward_to = [prometheus.remote_write.default.receiver]
+  scrape_interval = "30s"
+}
+
+// Prometheus remote write for Alloy metrics
+prometheus.remote_write "default" {
+  endpoint {
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+// Health check endpoint
+logging {
+  level  = "info"
+  format = "logfmt"
+}

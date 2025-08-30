@@ -71,15 +71,61 @@ services:
       - monitoring
     restart: unless-stopped
 
-  # loki:
+  # Loki for log aggregation
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki:/etc/loki
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki.yml
+    networks:
+      - monitoring
+    restart: unless-stopped
 
-  # alloy:
+  # Grafana Alloy for log collection (Promtail replacement)
+  alloy:
+    image: grafana/alloy:latest
+    volumes:
+      - ./alloy:/etc/alloy:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: 
+      - "run"
+      - "/etc/alloy/config.alloy"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+    ports:
+      - "12345:12345"  # Alloy web UI
+    networks:
+      - monitoring
+    restart: unless-stopped
+    depends_on:
+      - loki
 
-  # alertmanager:
+  # AlertManager for alerting
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager:/etc/alertmanager
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    networks:
+      - monitoring
+    restart: unless-stopped
 
 volumes:
   prometheus_data:
   grafana_data:
+  loki_data:
+  alertmanager_data:
 
 networks:
   monitoring:
