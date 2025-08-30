@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  ml-model:
+    build: ./model
+    ports:
+      - 8000:8000
+    environment:
+      - PROMETHEUS_MULTIPROC_DIR=/tmp
+    volumes:
+      - ./model:/app
+    networks:
+      - monitoring
+    restart: unless-stopped
+
+  # prometheus:
+
+  # grafana:
+
+  # node-exporter:
+
+  # loki:
+
+  # alloy:
+
+  # alertmanager:
+
+networks:
+  monitoring:
+    driver: bridge
