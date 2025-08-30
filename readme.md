@@ -6,3 +6,6 @@ Loki            > 3100
 Alert Manager   > ----
 Node Exporter   > ----
 Grafana Alloy   > 12345
+
+Start Compose 
+podman compose up  or docker compose up  
